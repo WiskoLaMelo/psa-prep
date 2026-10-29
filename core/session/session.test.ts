@@ -137,7 +137,7 @@ describe("précision avant rappel", () => {
     // Lecture ambiguë (nom lu différent du catalogue) mais carte déjà confirmée chez PSA.
     const r = { printed_name: "Charizord", printed_number: "006/165", set_code: "MEW", confidence: { game: 0.9, language: 0.9, name: 0.4, number: 0.5, set_code: 0.5 } };
     confirmFound(db, resolveIdentity(db, reading(r)), { title: "2023 POKEMON SV 151 #006 CHARIZARD ex" });
-    const previous = READINGS.red;
+    const previous = READINGS.red!;
     READINGS.red = r;
     const { capture, item } = await addCapture(db, s.id, await photo("red", 7));
     await processCapture(db, capture.id, { vision: fakeVision({ n: 0 }), imageFallback: false }).finally(() => (READINGS.red = previous));

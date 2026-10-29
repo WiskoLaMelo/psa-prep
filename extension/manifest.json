@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "PSA Prep — pré-remplissage",
+  "version": "0.1.0",
+  "description": "Rejoue une session PSA Prep dans le PSA Online Submission Center. Ne valide et ne paie jamais rien.",
+  "action": { "default_popup": "popup.html", "default_title": "PSA Prep" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://localhost/*", "https://www.psacard.com/*", "https://app.psacard.com/*"]
+}

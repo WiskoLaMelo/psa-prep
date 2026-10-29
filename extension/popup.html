@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { width: 360px; margin: 0; padding: 12px; font: 13px/1.4 system-ui, sans-serif; background: #1e1d1b; color: #ecebe7; }
+      label { display: block; margin-top: 8px; color: #a09c94; font-size: 12px; }
+      input, select, textarea, button { font: inherit; width: 100%; box-sizing: border-box; margin-top: 3px; border-radius: 6px; border: 1px solid #34322e; background: #141412; color: inherit; padding: 5px; }
+      button { cursor: pointer; background: #2a2926; }
+      button.primary { background: #6d8ff0; color: #0d0d0c; border-color: #6d8ff0; font-weight: 600; }
+      .row { display: flex; gap: 6px; }
+      .muted { color: #a09c94; font-size: 12px; }
+      .err { color: #f07b72; }
+      pre { white-space: pre-wrap; background: #141412; padding: 6px; border-radius: 6px; max-height: 160px; overflow: auto; }
+      details { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <b>PSA Prep — pré-remplissage</b>
+    <div class="muted">Remplit le formulaire PSA dans ta session connectée. Ne valide et ne paie jamais : c'est toi qui relis et payes.</div>
+    <label>Session<select id="session"></select></label>
+    <div class="row">
+      <label style="flex: 1">Mode
+        <select id="mode"><option value="simulation">Simulation (surligne seulement)</option><option value="real">Remplissage réel</option></select>
+      </label>
+      <label style="width: 90px">Depuis la carte<input id="startAt" type="number" min="1" value="1" /></label>
+    </div>
+    <div class="row" style="margin-top: 10px">
+      <button id="inspect">Inspecter le formulaire</button>
+      <button id="run" class="primary">Lancer</button>
+    </div>
+    <div id="msg" class="muted" style="margin-top: 8px"></div>
+    <details>
+      <summary>Dernier rapport</summary>
+      <pre id="report">—</pre>
+    </details>
+    <details>
+      <summary>Inspection (à transmettre pour régler les sélecteurs)</summary>
+      <button id="copyInspect">Copier le rapport d'inspection</button>
+      <pre id="inspectOut">—</pre>
+    </details>
+    <details>
+      <summary>Réglages</summary>
+      <label>Adresse de l'application locale<input id="serverUrl" placeholder="http://localhost:3000" /></label>
+      <label>Surcharge des sélecteurs (JSON, voir extension/src/selectors.ts)<textarea id="selectors" rows="6" placeholder='{"searchInput": "#item-search"}'></textarea></label>
+      <button id="save">Enregistrer</button>
+    </details>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
