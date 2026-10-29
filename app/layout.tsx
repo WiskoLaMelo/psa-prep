@@ -18,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/mappings">Correspondances PSA</Link>
             <Link href="/catalog">Catalogue</Link>
             <Link href="/phone">Téléphone</Link>
+            <Link href="/setup">Réglages</Link>
           </nav>
         </header>
         <main>{children}</main>

@@ -59,8 +59,9 @@ async function main() {
     case "catalog:sync": {
       const game = flag("game");
       const opts = { langs: langsFlag(), force: flags.has("force"), onProgress: (m: string) => console.log(m) };
-      if (!game || game === "pokemon") console.log("Pokémon :", await syncTcgdex(db, opts));
-      if (!game || game === "onepiece") console.log("One Piece :", await syncOnePiece(db, opts));
+      // Une source injoignable n'empêche pas l'autre.
+      if (!game || game === "pokemon") await syncTcgdex(db, opts).then((r) => console.log("Pokémon :", r), (e) => { console.error(`Pokémon : échec (${e.message})`); process.exitCode = 1; });
+      if (!game || game === "onepiece") await syncOnePiece(db, opts).then((r) => console.log("One Piece :", r), (e) => { console.error(`One Piece : échec (${e.message})`); process.exitCode = 1; });
       console.table(catalogStats(db));
       return;
     }

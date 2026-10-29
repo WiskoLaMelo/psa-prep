@@ -17,7 +17,21 @@ Outil local qui transforme une pile de cartes scannées (Pokémon et One Piece, 
 5. **Exports** : CSV, liste imprimable dans l'ordre de la pile, JSON pour l'extension.
 6. **Extension Chrome** : elle rejoue la session dans ton compte PSA déjà connecté, item par item, à rythme humain. Elle s'arrête avant toute validation.
 
-## Installation
+## Démarrer (sans rien connaître au code)
+
+1. **Télécharge le dossier** : sur la page GitHub du projet, bouton vert **Code** → **Download ZIP**. Double-clique sur le ZIP pour le décompresser, puis range le dossier `psa-prep-main` où tu veux (par exemple dans Documents).
+2. **Double-clique sur le lanceur** dans ce dossier :
+   - Mac : `Lancer PSA Prep (Mac).command`. La première fois, macOS peut dire qu'il ne peut pas l'ouvrir : fais **clic droit → Ouvrir → Ouvrir**.
+   - Windows : `Lancer PSA Prep (Windows).bat`. Si Windows affiche « Windows a protégé votre ordinateur », clique **Informations complémentaires → Exécuter quand même**.
+
+   Le lanceur installe tout ce qui manque (Node.js compris), démarre PSA Prep et ouvre le navigateur. Laisse la fenêtre noire ouverte pendant que tu l'utilises ; ferme-la pour arrêter.
+3. **Suis la page « Premier démarrage »** qui s'ouvre : colle ta clé Anthropic, télécharge les catalogues, teste une photo de carte.
+
+Pour scanner avec le téléphone, utilise le lanceur « avec le téléphone » et scanne le QR code qui s'affiche.
+
+Les sections suivantes détaillent chaque fonction ; les commandes `npm` ne sont utiles que si tu veux passer par le terminal.
+
+## Installation (par le terminal)
 
 Prérequis : Node.js 20 ou plus récent, Google Chrome, une clé API Anthropic et un token PSA Public API.
 

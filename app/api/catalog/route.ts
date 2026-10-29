@@ -26,15 +26,24 @@ export async function POST(req: Request) {
     g.__catalogSync = state;
     const db = getDb();
     const onProgress = (m: string) => state.log.push(m);
+    // Chaque jeu est synchronisé indépendamment : une source injoignable n'empêche pas l'autre.
+    const run = async (label: string, host: string, fn: () => Promise<unknown>) => {
+      try {
+        const summary = (await fn()) as Record<string, { cards: number }>;
+        onProgress(`✓ ${label} : ${Object.entries(summary).map(([lang, s]) => `${lang.toUpperCase()} ${s.cards} cartes mises à jour`).join(", ")}`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const network = /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ECONNRESET|network/i.test(msg);
+        state.error = msg;
+        onProgress(`✗ ${label} : ${network ? `impossible de joindre ${host} (connexion Internet, pare-feu ou site en panne). Réessaie dans quelques minutes.` : msg}`);
+      }
+    };
     void (async () => {
       try {
-        if (!body.game || body.game === "pokemon") onProgress(`Pokémon : ${JSON.stringify(await syncTcgdex(db, { force: body.force, onProgress }))}`);
-        if (!body.game || body.game === "onepiece") onProgress(`One Piece : ${JSON.stringify(await syncOnePiece(db, { onProgress }))}`);
+        if (!body.game || body.game === "pokemon") await run("Pokémon", "api.tcgdex.net", () => syncTcgdex(db, { force: body.force, onProgress }));
+        if (!body.game || body.game === "onepiece") await run("One Piece", "raw.githubusercontent.com", () => syncOnePiece(db, { onProgress }));
         refreshPsa(db);
-        onProgress("Terminé.");
-      } catch (e) {
-        state.error = e instanceof Error ? e.message : String(e);
-        onProgress(`Erreur : ${state.error}`);
+        onProgress(state.error ? "Terminé, avec des erreurs (voir ci-dessus)." : "Terminé.");
       } finally {
         state.running = false;
       }

@@ -34,6 +34,14 @@ export default function Home() {
     api<Config>("/api/config").then(setCfg).catch(() => {});
   };
   useEffect(load, []);
+  // Premier lancement : pas de clé ou catalogue vide → page de démarrage guidé.
+  useEffect(() => {
+    api<{ hasAnthropicKey: boolean; pokemonCards: number; onePieceCards: number }>("/api/setup")
+      .then((s) => {
+        if (!s.hasAnthropicKey || (s.pokemonCards === 0 && s.onePieceCards === 0)) location.replace("/setup");
+      })
+      .catch(() => {});
+  }, []);
 
   const create = () =>
     run(async () => {
