@@ -8,3 +8,8 @@ certs.txt
 dist/
 *.log
 .DS_Store
+next-env.d.ts
+*.tsbuildinfo
+extension/dist/
+backups/
+certificates/
