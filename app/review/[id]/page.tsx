@@ -19,6 +19,8 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [data, setData] = useState<Data | null>(null);
   const [todoOnly, setTodoOnly] = useState(false);
   const [name, setName] = useState("");
+  const [returnsText, setReturnsText] = useState("");
+  const [returns, setReturns] = useState<{ position: number; cert: string; label?: string; status: string; error?: string }[] | null>(null);
   const { busy, err, run } = useBusy();
 
   const load = useCallback(() => {
@@ -88,6 +90,47 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         </Link>
       </div>
       {err && <p className="err">{err}</p>}
+      <details className="panel" style={{ marginBottom: 16 }}>
+        <summary>
+          <b>Retour de gradation</b> <span className="muted small">— rattacher les certificats reçus à chaque carte</span>
+        </summary>
+        <div className="stack small" style={{ marginTop: 8 }}>
+          <span className="muted">
+            Colle les numéros de certificat de la commande dans l'ordre (le même que la pile : carte 1 en premier). Chaque carte devient une référence exacte,
+            y compris celles qui n'avaient encore aucune pop : la prochaine fois, elles seront vertes. Une paire douteuse est signalée au lieu d'être liée.
+          </span>
+          <textarea rows={4} value={returnsText} onChange={(e) => setReturnsText(e.target.value)} placeholder="12345678&#10;12345679&#10;…" />
+          <div>
+            <button
+              className="primary"
+              disabled={busy || !returnsText.trim()}
+              onClick={() =>
+                run(async () => {
+                  const r = await api<{ results: NonNullable<typeof returns> }>(`/api/sessions/${id}/returns`, { method: "POST", json: { text: returnsText } });
+                  setReturns(r.results);
+                  load();
+                })
+              }
+            >
+              Rattacher les certificats
+            </button>
+          </div>
+          {returns && (
+            <table>
+              <tbody>
+                {returns.map((r) => (
+                  <tr key={`${r.position}-${r.cert}`}>
+                    <td>{r.position}</td>
+                    <td className="mono">{r.cert}</td>
+                    <td>{{ linked: "✓ rattaché", mismatch: "⚠ ne correspond pas : vérifie l'ordre", not_found: "introuvable", no_item: "pas de carte à cette position", error: "erreur" }[r.status] ?? r.status}</td>
+                    <td>{r.label ?? r.error}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </details>
       {shown.length === 0 && <p className="muted">{items.length ? "Rien à traiter : toutes les cartes sont vertes et sûres." : "Aucune carte. Passe par le scan."}</p>}
       <div className="stack" style={{ gap: 12 }}>
         {shown.map((i) => (

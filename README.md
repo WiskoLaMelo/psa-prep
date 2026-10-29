@@ -76,10 +76,28 @@ Si le réseau coupe, la capture continue. Les photos partent dans l'ordre dès q
 
 ### Avec le téléphone comme caméra
 
-Un navigateur mobile n'autorise la caméra qu'en HTTPS. Deux options :
+Le logiciel tourne sur l'ordinateur. Le téléphone ne sert que de caméra et d'écran, via son navigateur : il n'y a rien à installer dessus.
 
-- **HTTPS local** : `npm run dev:https` génère un certificat local (mkcert) et écoute sur le réseau. Ouvre `https://<ip-de-l-ordinateur>:3000` sur le téléphone et accepte le certificat.
-- **Tunnel** : par exemple `cloudflared tunnel --url http://localhost:3000`, puis ouvre l'URL HTTPS fournie. Le tunnel expose l'application sur Internet : coupe-le après le scan.
+```bash
+npm run phone
+```
+
+La commande lance l'application en HTTPS et affiche un **QR code** dans le terminal. La page **Téléphone** de l'application l'affiche aussi.
+
+1. Mets le téléphone et l'ordinateur sur le même Wi-Fi.
+2. Scanne le QR code avec l'appareil photo du téléphone.
+3. La première fois, accepte l'avertissement de certificat. Sur Android/Chrome : « Paramètres avancés » → « Continuer vers le site ». Sur iPhone/Safari : « Afficher les détails » → « visiter ce site web ».
+4. Si la page ne s'ouvre pas, autorise Node.js dans le pare-feu de l'ordinateur.
+
+Sur le téléphone, touche l'image pour capturer à la main. L'écran ne se met pas en veille pendant le scan. Tu peux suivre la revue en même temps sur l'ordinateur.
+
+**Si la caméra reste bloquée** (certains iPhone refusent un certificat local), passe par un tunnel. Il donne une vraie adresse HTTPS, même hors de ton Wi-Fi :
+
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+Ouvre l'adresse `https://….trycloudflare.com` affichée. Le tunnel expose l'application sur Internet : coupe-le après le scan.
 
 ## La revue
 
@@ -90,6 +108,33 @@ Un navigateur mobile n'autorise la caméra qu'en HTTPS. Deux options :
 - **Trouvé chez PSA** : colle le titre exact affiché par le Submission Center, et indique si possible quelle recherche a fonctionné. La carte passe en vert, et les autres cartes du même set en profitent aussitôt.
 - Les doublons sont signalés mais autorisés.
 - Valeur déclarée et notes : saisie manuelle en v1.
+
+## Cartes introuvables, exclusivités et cartes sans pop
+
+### Cartes absentes du catalogue (exclusivités JP, promos récentes)
+
+Aucun catalogue n'est complet, surtout en japonais. Quand Claude lit nettement une carte que le catalogue ne connaît pas, l'outil ne bloque pas : il construit l'identité à partir de la lecture, avec une confiance plafonnée à 60 % et l'avertissement « Carte absente du catalogue ». Vérifie-la, puis clique **Confirmer l'identité** (ou **Corriger**). La carte rejoint alors le catalogue local et sera retrouvée directement aux prochains scans.
+
+- **One Piece en japonais** : l'outil utilise l'édition « English Asia ». Elle suit les sorties japonaises avec les mêmes numéros, y compris environ 400 parallèles et promos absentes de l'anglais. Le nom japonais vient de la lecture.
+- **Pokémon en japonais** : les sets japonais de TCGdex sont utilisés tels quels, sans détour par l'anglais (les exclusivités JP n'y ont pas d'équivalent).
+
+### Cartes que la recherche PSA ne trouve pas : la référence par un slab
+
+Pour une carte déjà gradée au moins une fois, le certificat d'un exemplaire gradé donne la référence exacte de PSA : année, set tel que PSA l'écrit, numéro, nom, variété, spec. Peu importe à qui appartient le slab. Trois façons de l'utiliser :
+
+- **Scanner tes propres slabs** : passe-les sous la caméra comme des cartes nues. Le numéro de certificat est lu sur l'étiquette, importé, puis rattaché à la carte.
+- **Le slab de quelqu'un d'autre** : trouve un exemplaire gradé de la carte (annonce eBay, photo). Dans la revue, ouvre **Référence par un slab**, puis saisis le numéro de certificat ou envoie une photo ou une capture d'écran de l'étiquette.
+- **certs.txt** : l'import en masse de tes certificats.
+
+La carte passe au vert, et l'outil apprend comment PSA nomme ce set. Les autres cartes du même set passent alors à l'orange avec un libellé déduit.
+
+### Cartes sans aucune pop
+
+Si personne n'a encore gradé la carte, il n'existe pas de référence PSA à recopier. La stratégie :
+
+1. **Le set existe chez PSA** (d'autres cartes du set sont gradées) : la carte est orange. L'outil déduit son libellé des règles du set (format du numéro, langue et casse du nom, vocabulaire de variété). Chez PSA, utilise l'**ajout manuel d'item** avec les champs préparés : ils suivent la façon dont PSA nomme déjà ce set, ce qui maximise les chances d'une étiquette juste.
+2. **Le set n'existe pas chez PSA** : la carte est rouge. Fais d'abord une **PSA Research Request** avec la description et les liens pré-rédigés, avant l'envoi.
+3. **Au retour de gradation**, colle les numéros de certificat de la commande dans **Retour de gradation**, dans l'ordre de la pile. Chaque carte devient une référence exacte : la prochaine fois, elle sera verte. Une paire qui ne correspond pas (ordre décalé) est signalée au lieu d'être liée.
 
 ## Extension Chrome (phase 2)
 
@@ -149,7 +194,8 @@ npm run cli -- mappings:import backups/…/mappings.json
 
 | Commande | Rôle |
 | --- | --- |
-| `npm run dev` / `npm run dev:https` | Application locale (HTTP, ou HTTPS pour le téléphone) |
+| `npm run dev` | Application locale sur l'ordinateur |
+| `npm run phone` | Application en HTTPS + QR code, pour scanner avec le téléphone |
 | `npm run catalog:sync` | Synchronise les catalogues (`-- --game pokemon --lang fr,ja --force`) |
 | `npm run cli -- catalog:check` | Contrôle du catalogue (M0) |
 | `npm run identify -- <photo>` | Identifie une photo, affiche l'identité et la référence PSA en JSON |

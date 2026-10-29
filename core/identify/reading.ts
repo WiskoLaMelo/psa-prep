@@ -78,4 +78,5 @@ Repères utiles :
 - Promos : numéros du type "SWSH050", "SVP 085", "SM60", "XY120", ou mention PROMO.
 - One Piece : le numéro de carte "OP05-119" (ou "ST10-001", "EB01-012", "P-001") est en bas à droite, identique dans toutes les langues ; la rareté (C, UC, R, SR, SEC, L, SP, TR) est à côté. Les versions parallèles (alt art) ont souvent un cadre ou une illustration différente : signale "parallel".
 - language désigne la langue du texte imprimé sur la carte.
+- Carte dans un slab (PSA, BGS, CGC…) : lis la carte à travers le boîtier comme d'habitude, mets is_graded_slab à true et recopie le numéro de certificat de l'étiquette dans slab_cert_number (chiffres seulement, sans deviner un chiffre illisible). La photo peut aussi être une capture d'écran d'annonce.
 - name_english : le nom anglais officiel (ex. "Bulbizarre" → "Bulbasaur", "リザードン" → "Charizard"), seulement si tu en es sûr.`;

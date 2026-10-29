@@ -3,13 +3,14 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Db } from "../db";
-import { captures, identifications, sessionItems, sessions, visionCache } from "../db/schema";
+import { captures, catalogCards, catalogSets, identifications, sessionItems, sessions, visionCache } from "../db/schema";
+import { upsertCards, upsertSets } from "../catalog/store";
 import type { CardCandidate, CardIdentity, ManualFields, PsaResolution } from "../types";
 import { config } from "../config";
 import { sha256 } from "../identify/image";
 import { resolvePsa } from "../psa/resolve";
 import { identityFromCandidate } from "../identify/resolve";
-import { makeCardKey } from "../cards/key";
+import { makeCardKey, setKey } from "../cards/key";
 
 export type SessionRow = typeof sessions.$inferSelect;
 export type SessionItemRow = typeof sessionItems.$inferSelect;
@@ -209,6 +210,8 @@ export function refreshPsa(db: Db, sessionId?: string) {
 
 export interface ItemPatch {
   candidateCardKey?: string;
+  /** L'utilisateur valide l'identité telle quelle (ex. carte hors catalogue lue correctement). */
+  confirmIdentity?: boolean;
   identity?: Partial<Pick<CardIdentity, "setId" | "setName" | "number" | "name" | "nameEn" | "variant" | "lang" | "game">>;
   manualOverrides?: Partial<ManualFields> | null;
   declaredValue?: number | null;
@@ -258,10 +261,53 @@ export function patchItem(db: Db, itemId: number, patch: ItemPatch) {
     next.warnings = [];
     identity = next;
   }
-  if (patch.candidateCardKey || patch.identity) {
+  if (patch.confirmIdentity && identity) identity = { ...identity, method: "manual", confidence: 1, warnings: [] };
+  if (identity && (patch.identity || patch.confirmIdentity)) identity = learnCatalogCard(db, identity);
+  if (patch.candidateCardKey || patch.identity || patch.confirmIdentity) {
     db.update(identifications).set({ userCorrected: true }).where(eq(identifications.captureId, item.frontCaptureId ?? -1)).run();
   }
   setItemIdentity(db, itemId, identity);
+}
+
+/**
+ * Une carte confirmée par l'utilisateur qui manque au catalogue (exclusivité, promo, trou de TCGdex) y est ajoutée,
+ * avec son set : le prochain scan de la même carte la retrouvera par code + numéro.
+ */
+export function learnCatalogCard(db: Db, identity: CardIdentity): CardIdentity {
+  if (!identity.setId || !identity.number || !identity.name) return identity;
+  if (identity.catalogKey && db.select({ k: catalogCards.cardKey }).from(catalogCards).where(eq(catalogCards.cardKey, identity.catalogKey)).get()) return identity;
+  const key = identity.cardKey;
+  upsertCards(db, [
+    {
+      cardKey: key,
+      game: identity.game,
+      lang: identity.lang,
+      setId: identity.setId,
+      setName: identity.setName || identity.setId,
+      number: identity.number,
+      name: identity.name,
+      nameEn: identity.nameEn,
+      variant: identity.variant,
+      imageUrl: null,
+      source: "user",
+    },
+  ]);
+  const sk = setKey(identity.game, identity.lang, identity.setId);
+  if (!db.select({ k: catalogSets.key }).from(catalogSets).where(eq(catalogSets.key, sk)).get()) {
+    upsertSets(db, [
+      {
+        key: sk,
+        game: identity.game,
+        lang: identity.lang,
+        setId: identity.setId,
+        name: identity.setName || identity.setId,
+        codesJson: JSON.stringify([identity.setId]),
+        releaseDate: identity.releaseYear ? `${identity.releaseYear}-01-01` : null,
+        source: "user",
+      },
+    ]);
+  }
+  return { ...identity, catalogKey: key };
 }
 
 export function listItems(db: Db, sessionId: string): SessionItemView[] {

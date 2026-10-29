@@ -43,7 +43,8 @@ export interface CardIdentity {
   imageUrl: string | null;
   /** 0 à 1. */
   confidence: number;
-  method: "set_code" | "name_number" | "card_id" | "image" | "manual" | "none";
+  /** "reading" = carte absente du catalogue, identité tirée de la seule lecture (exclusivité, promo récente…). */
+  method: "set_code" | "name_number" | "card_id" | "image" | "reading" | "manual" | "none";
   candidates: CardCandidate[];
   warnings: string[];
 }

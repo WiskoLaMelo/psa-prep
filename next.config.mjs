@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ["better-sqlite3", "sharp"],
+  // Pas de badge de développement par-dessus l'écran de scan sur téléphone.
+  devIndicators: false,
   // Autorise l'accès depuis le téléphone sur le réseau local (scan via HTTPS).
   allowedDevOrigins: ["*.local", "192.168.*.*", "10.*.*.*"],
 };

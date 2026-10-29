@@ -218,8 +218,12 @@ export function suggestCatalogMatches(db: Db, item: PsaItemRow, set: PsaSetRow, 
     .slice(0, limit);
 }
 
-/** Enregistre un certificat PSA : set, item, puis lien automatique vers le catalogue si la correspondance est nette. */
-export function ingestCert(db: Db, cert: PsaCert): { item: PsaItemRow; linkedCardKey: string | null; suggestions: LinkSuggestion[] } {
+/**
+ * Enregistre un certificat PSA : set, item, puis lien vers le catalogue.
+ * Avec forCardKey, le lien est fait directement vers cette carte (l'utilisateur sait de quelle carte il s'agit) ;
+ * sinon, lien automatique seulement si la correspondance est nette.
+ */
+export function ingestCert(db: Db, cert: PsaCert, forCardKey?: string): { item: PsaItemRow; linkedCardKey: string | null; suggestions: LinkSuggestion[] } {
   const brand = (cert.Brand ?? "").trim();
   const { game, lang } = detectGameLang(brand, cert.Category);
   const set = upsertPsaSet(db, { game, lang, psaSetString: brand, year: cert.Year?.trim() || null, category: cert.Category, source: "cert_api" });
@@ -234,6 +238,10 @@ export function ingestCert(db: Db, cert: PsaCert): { item: PsaItemRow; linkedCar
     exampleCert: String(cert.CertNumber),
   });
   db.update(certs).set({ psaItemId: item.id }).where(eq(certs.certNumber, String(cert.CertNumber))).run();
+  if (forCardKey) {
+    linkCard(db, forCardKey, item.id, "cert_api");
+    return { item, linkedCardKey: forCardKey, suggestions: [] };
+  }
   const already = db.select().from(mappings).where(eq(mappings.psaItemId, item.id)).get();
   const suggestions = suggestCatalogMatches(db, item, set);
   if (already) return { item, linkedCardKey: already.cardKey, suggestions };
@@ -256,11 +264,38 @@ export interface CertImportResult {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Importe une liste de certificats. Les réponses sont gardées définitivement : un certificat n'est jamais redemandé. */
+export interface CertFetchOptions {
+  token?: string;
+  fetch?: FetchLike;
+}
+
+/** Réponse PSA d'un certificat, depuis le cache si possible. Les réponses sont gardées définitivement. */
+export async function getCertData(db: Db, cert: string, opts: CertFetchOptions): Promise<{ data: PsaCert | null; fromCache: boolean }> {
+  const cached = db.select().from(certs).where(eq(certs.certNumber, cert)).get();
+  if (cached?.rawJson) return { data: JSON.parse(cached.rawJson) as PsaCert, fromCache: true };
+  if (cached && !cached.error) return { data: null, fromCache: true };
+  if (!opts.token) throw new Error("PSA_API_TOKEN manquant dans .env");
+  try {
+    const data = await fetchCert(cert, { token: opts.token, fetch: opts.fetch });
+    db.insert(certs)
+      .values({ certNumber: cert, rawJson: data ? JSON.stringify(data) : null, error: null })
+      .onConflictDoUpdate({ target: certs.certNumber, set: { rawJson: data ? JSON.stringify(data) : null, error: null, fetchedAt: new Date().toISOString() } })
+      .run();
+    return { data, fromCache: false };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    db.insert(certs).values({ certNumber: cert, error: msg }).onConflictDoUpdate({ target: certs.certNumber, set: { error: msg } }).run();
+    throw e;
+  }
+}
+
+const isFatal = (msg: string) => /Token PSA|Limite d'appels|PSA_API_TOKEN/.test(msg);
+
+/** Importe une liste de certificats. Un certificat n'est jamais redemandé à l'API. */
 export async function importCerts(
   db: Db,
   numbers: string[],
-  opts: { token?: string; fetch?: FetchLike; delayMs?: number; onProgress?: (r: CertImportResult, i: number, n: number) => void },
+  opts: CertFetchOptions & { delayMs?: number; onProgress?: (r: CertImportResult, i: number, n: number) => void },
 ): Promise<CertImportResult[]> {
   const list = [...new Set(numbers.map((n) => n.replace(/\D/g, "")).filter(Boolean))];
   const out: CertImportResult[] = [];
@@ -268,24 +303,9 @@ export async function importCerts(
   for (const [i, cert] of list.entries()) {
     let result: CertImportResult;
     try {
-      const cached = db.select().from(certs).where(eq(certs.certNumber, cert)).get();
-      let data: PsaCert | null;
-      let fromCache = false;
-      if (cached?.rawJson) {
-        data = JSON.parse(cached.rawJson) as PsaCert;
-        fromCache = true;
-      } else if (cached && !cached.error) {
-        data = null;
-        fromCache = true;
-      } else {
-        if (!opts.token) throw new Error("PSA_API_TOKEN manquant dans .env");
-        if (calls++ > 0) await sleep(opts.delayMs ?? 1500);
-        data = await fetchCert(cert, { token: opts.token, fetch: opts.fetch });
-        db.insert(certs)
-          .values({ certNumber: cert, rawJson: data ? JSON.stringify(data) : null, error: null })
-          .onConflictDoUpdate({ target: certs.certNumber, set: { rawJson: data ? JSON.stringify(data) : null, error: null, fetchedAt: new Date().toISOString() } })
-          .run();
-      }
+      const willCall = !db.select({ c: certs.certNumber }).from(certs).where(sql`${certs.certNumber} = ${cert} and ${certs.error} is null`).get();
+      if (willCall && calls++ > 0) await sleep(opts.delayMs ?? 1500);
+      const { data, fromCache } = await getCertData(db, cert, opts);
       if (!data) result = { cert, status: "not_found" };
       else {
         const r = ingestCert(db, data);
@@ -293,9 +313,8 @@ export async function importCerts(
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      db.insert(certs).values({ certNumber: cert, error: msg }).onConflictDoUpdate({ target: certs.certNumber, set: { error: msg } }).run();
       result = { cert, status: "error", error: msg };
-      if (/Token PSA|Limite d'appels|PSA_API_TOKEN/.test(msg)) {
+      if (isFatal(msg)) {
         out.push(result);
         opts.onProgress?.(result, i, list.length);
         break;
@@ -303,6 +322,80 @@ export async function importCerts(
     }
     out.push(result);
     opts.onProgress?.(result, i, list.length);
+  }
+  return out;
+}
+
+/**
+ * Rattache un certificat à une carte précise : un de tes slabs, ou le slab de quelqu'un d'autre
+ * (annonce, photo) pour une carte que la recherche PSA ne trouve pas. Le libellé du certificat
+ * est la référence exacte de PSA pour cette carte.
+ */
+export async function attachCert(db: Db, certNumber: string, cardKey: string, opts: CertFetchOptions) {
+  const cert = certNumber.replace(/\D/g, "");
+  if (!cert) throw new Error("Numéro de certificat invalide");
+  const { data } = await getCertData(db, cert, opts);
+  if (!data) throw new Error(`Certificat ${cert} introuvable chez PSA`);
+  const r = ingestCert(db, data, cardKey);
+  return { item: r.item, cert: data };
+}
+
+export interface ReturnMatch {
+  position: number;
+  cert: string;
+  label?: string;
+  status: "linked" | "mismatch" | "not_found" | "error" | "no_item";
+  similarity?: number;
+  error?: string;
+}
+
+/** Vérifie que le sujet d'un certificat ressemble bien au nom de la carte attendue. */
+export function subjectMatches(subject: string, identity: Pick<CardIdentity, "name" | "nameEn" | "number">, cardNumber?: string | null): number {
+  const s = Math.max(similarity(subject, identity.nameEn), similarity(subject, identity.name));
+  const numOk = cardNumber ? numberForms(identity.number).some((f) => cardNumber.toUpperCase().endsWith(f.toUpperCase())) : false;
+  return Math.min(1, s + (numOk ? 0.2 : 0));
+}
+
+/**
+ * Retour de gradation : les certificats reçus, dans l'ordre de la commande (= ordre de la pile),
+ * sont rattachés un par un aux cartes de la session. Toute paire douteuse (sujet trop différent)
+ * est signalée au lieu d'être liée : la précision avant le rappel.
+ */
+export async function attachReturnedCerts(
+  db: Db,
+  items: { position: number; identity: CardIdentity | null }[],
+  numbers: string[],
+  opts: CertFetchOptions & { delayMs?: number },
+): Promise<ReturnMatch[]> {
+  const list = numbers.map((n) => n.replace(/\D/g, "")).filter(Boolean);
+  const out: ReturnMatch[] = [];
+  for (const [i, cert] of list.entries()) {
+    const item = items[i];
+    if (!item?.identity) {
+      out.push({ position: item?.position ?? i + 1, cert, status: "no_item" });
+      continue;
+    }
+    try {
+      if (i > 0) await sleep(opts.delayMs ?? 1500);
+      const { data } = await getCertData(db, cert, opts);
+      if (!data) {
+        out.push({ position: item.position, cert, status: "not_found" });
+        continue;
+      }
+      const sim = subjectMatches(data.Subject ?? "", item.identity, data.CardNumber);
+      if (sim < 0.6) {
+        // On enregistre quand même l'item PSA (utile ailleurs), sans le lier à cette carte.
+        const r = ingestCert(db, data);
+        out.push({ position: item.position, cert, status: "mismatch", label: r.item.label, similarity: sim });
+        continue;
+      }
+      const r = ingestCert(db, data, item.identity.cardKey);
+      out.push({ position: item.position, cert, status: "linked", label: r.item.label, similarity: sim });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      out.push({ position: item.position, cert, status: "error", error: msg });
+      if (isFatal(msg)) break;
+    }
   }
   return out;
 }

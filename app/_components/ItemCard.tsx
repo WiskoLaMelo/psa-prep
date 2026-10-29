@@ -21,6 +21,8 @@ export function ItemCard({ item, sessionId, total, onChange }: { item: SessionIt
   const [found, setFound] = useState("");
   const [specId, setSpecId] = useState("");
   const [usedSearch, setUsedSearch] = useState("");
+  const [cert, setCert] = useState("");
+  const [certMsg, setCertMsg] = useState<string | null>(null);
 
   useEffect(() => setOverrides(item.manualOverrides ?? {}), [item.manualOverrides]);
 
@@ -142,6 +144,16 @@ export function ItemCard({ item, sessionId, total, onChange }: { item: SessionIt
             {w}
           </div>
         ))}
+        {id && id.method !== "manual" && id.confidence < 0.9 && !editing && (
+          <div className="row">
+            <button className="small" disabled={busy} onClick={() => patch({ confirmIdentity: true })}>
+              ✓ Confirmer l'identité
+            </button>
+            <span className="muted small">
+              {id.method === "reading" ? "la carte sera ajoutée au catalogue local pour les prochains scans" : "si la carte affichée est la bonne"}
+            </span>
+          </div>
+        )}
 
         {id && id.candidates.length > 1 && !editing && (
           <label className="field">
@@ -272,6 +284,56 @@ export function ItemCard({ item, sessionId, total, onChange }: { item: SessionIt
               </div>
             ) : null}
           </div>
+        )}
+
+        {id && psa?.status !== "green" && (
+          <details>
+            <summary className="small">Référence par un slab (carte introuvable chez PSA ?)</summary>
+            <div className="stack small" style={{ marginTop: 6 }}>
+              <span className="muted">
+                Trouve un exemplaire déjà gradé de cette carte (annonce eBay, pop report, ton propre slab) : son certificat donne la référence exacte de PSA.
+                Saisis le numéro, ou envoie une photo ou une capture d'écran de l'étiquette.
+              </span>
+              <div className="row">
+                <input className="grow mono" inputMode="numeric" placeholder="N° de certificat PSA" value={cert} onChange={(e) => setCert(e.target.value)} />
+                <button
+                  disabled={busy || !cert.trim()}
+                  onClick={() =>
+                    run(async () => {
+                      const r = await api<{ label: string; warning: string | null }>(`${url}/cert`, { method: "POST", json: { cert } });
+                      setCertMsg(r.warning ?? `Rattaché : ${r.label}`);
+                      setCert("");
+                      onChange();
+                    })
+                  }
+                >
+                  Rattacher
+                </button>
+                <label className="btn small">
+                  Photo / capture
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      void run(async () => {
+                        const form = new FormData();
+                        form.append("image", f);
+                        const res = await fetch(`${url}/cert`, { method: "POST", body: form });
+                        const r = (await res.json()) as { label?: string; warning?: string | null; error?: string };
+                        if (!res.ok) throw new Error(r.error ?? "Erreur");
+                        setCertMsg(r.warning ?? `Rattaché : ${r.label}`);
+                        onChange();
+                      });
+                    }}
+                  />
+                </label>
+              </div>
+              {certMsg && <span className={certMsg.startsWith("Attention") ? "warn" : "muted"}>{certMsg}</span>}
+            </div>
+          </details>
         )}
 
         <div className="row">

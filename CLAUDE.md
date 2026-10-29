@@ -33,12 +33,15 @@
 - **Modèle vision** : `claude-opus-5-5` par défaut, effort `medium`, sortie structurée zod via `client.beta.messages.parse`, avec le secours serveur en cas de refus (`fallbacks: "default"`). Modèle et effort se règlent dans `.env`.
 - **Cache vision** par sha256 de l'image originale (`vision_cache`). La file d'identification vit en base (`captures.status`) et reprend au redémarrage.
 - **Hash perceptuel** : dHash 128 bits sur la zone d'illustration ; distance ≤ 20 = même illustration.
+- **Cartes hors catalogue** : si rien ne correspond mais que la lecture est nette (nom, numéro et code ≥ 0,8), l'identité vient de la lecture (`method: "reading"`, confiance plafonnée à `OFF_CATALOG_MAX_CONFIDENCE` = 0,6). Une identité confirmée ou corrigée par l'utilisateur est ajoutée au catalogue local (`source: "user"`, `learnCatalogCard`).
+- **Référence par un slab** : un certificat peut être rattaché directement à une carte précise (`attachCert`), qu'il s'agisse d'un slab de l'utilisateur ou de quelqu'un d'autre. Un slab scanné est rattaché automatiquement si l'identité est sûre et si le sujet du certificat ressemble au nom de la carte (`subjectMatches` ≥ 0,6) ; sinon, avertissement.
+- **Retour de gradation** : certificats collés dans l'ordre de la pile, rattachés position par position (`attachReturnedCerts`) ; une paire douteuse est signalée, jamais liée. C'est la réponse aux cartes sans pop : après leur premier passage, elles deviennent vertes.
 - **Statuts PSA** stockés dans `session_items.psa_json` comme cache, recalculés au démarrage du serveur et après chaque import ou confirmation.
 
 ## Questions ouvertes du M0 : réponses retenues (à revoir avec l'utilisateur)
 
-1. **Capture** : les deux options sont prises en charge. Webcam en `localhost` ; téléphone via `npm run dev:https` (certificat mkcert de Next) ou via un tunnel.
-2. **Catalogue One Piece** : jeu de données ouvert Punk Records (github.com/buhbbl/punk-records), généré par vegapull depuis les sites officiels. Il couvre l'anglais et le français, pas le japonais. Les données sont © Eiichiro Oda/Shueisha, Toei Animation, Bandai ; le code du pipeline est sous AGPL. Usage personnel uniquement, données non redistribuées (rien n'est commité). Une carte JP utilise la fiche anglaise, puisque les identifiants sont universels ; le nom imprimé lu par Claude est conservé.
+1. **Capture** : les deux options sont prises en charge. Webcam en `localhost` ; téléphone via `npm run phone` (certificat auto-signé couvrant les IP du réseau local, QR code dans le terminal et sur la page /phone) ou via un tunnel (cloudflared). Le logiciel ne tourne pas sur le téléphone : c'est un navigateur qui sert de caméra.
+2. **Catalogue One Piece** : jeu de données ouvert Punk Records (github.com/buhbbl/punk-records), généré par vegapull depuis les sites officiels. Il couvre l'anglais et le français ; le dossier japonais est vide, donc les fiches `ja` viennent de l'édition « English Asia » (source `punk-records-asia`), qui suit les sorties japonaises et contient environ 400 cartes absentes de l'anglais. Les données sont © Eiichiro Oda/Shueisha, Toei Animation, Bandai ; le code du pipeline est sous AGPL. Usage personnel uniquement, données non redistribuées (rien n'est commité). Le nom japonais imprimé vient de la lecture.
 3. **Pages de population PSA** : CGU non vérifiées, donc rien n'est implémenté et l'interrupteur reste à false.
 4. **Valeur déclarée** : manuelle en v1.
 
@@ -48,7 +51,8 @@
 - **Réponses de l'API PSA** (`/publicapi/cert/GetByCertNumber/{n}`, objet `PSACert`, en-tête `Authorization: bearer …`) : à vérifier avec un vrai token.
 - **Prompt vision** : jamais exécuté contre la vraie API. Le premier `npm run eval` donnera la vraie mesure.
 - **Sélecteurs du formulaire PSA** : heuristiques génériques. Les régler à partir d'une inspection réelle (bouton « Inspecter le formulaire » du popup) avant tout remplissage réel.
-- **Synchro One Piece** : vérifiée pour de vrai (4 910 cartes EN, 2 950 FR ; contrôle 20/20).
+- **Synchro One Piece** : vérifiée pour de vrai (4 910 cartes EN, 2 950 FR ; contrôle 20/20). Édition English Asia : 4 914 cartes, dont 400 absentes de l'anglais.
+- **Téléphone** : `npm run phone` testé ici (certificat couvrant l'IP réseau vérifié avec openssl, page servie via l'IP) ; écran de scan testé en émulation Android avec caméra simulée. Pas testé sur un vrai iPhone.
 
 ## Conventions de travail
 

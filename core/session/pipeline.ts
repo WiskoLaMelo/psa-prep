@@ -12,12 +12,15 @@ import { readCardWithClaude, type VisionReader } from "../identify/vision";
 import type { CardIdentity } from "../types";
 import type { FetchLike } from "../util/http";
 import { setItemIdentity } from "./service";
+import { attachCert, subjectMatches, unlinkCard } from "../psa/store";
 
 export interface PipelineDeps {
   vision?: VisionReader;
   fetch?: FetchLike;
   /** Désactive le secours par image (tests, mode hors ligne). */
   imageFallback?: boolean;
+  /** Token PSA (par défaut celui de .env ; null pour désactiver). */
+  psaToken?: string | null;
 }
 
 export interface IdentifyResult {
@@ -124,6 +127,7 @@ export async function processCapture(db: Db, captureId: number, deps: PipelineDe
         },
       })
       .run();
+    await attachSlabCert(db, res, deps);
     if (cap.sessionItemId) setItemIdentity(db, cap.sessionItemId, res.identity);
     db.update(captures).set({ status: "done" }).where(eq(captures.id, captureId)).run();
     return res;
@@ -133,6 +137,34 @@ export async function processCapture(db: Db, captureId: number, deps: PipelineDe
       .where(eq(captures.id, captureId))
       .run();
     throw e;
+  }
+}
+
+/**
+ * Slab photographié : le numéro de certificat lu sur l'étiquette donne la référence PSA exacte de la carte.
+ * On le rattache directement à la carte identifiée, si l'identité est sûre.
+ */
+async function attachSlabCert(db: Db, res: IdentifyResult, deps: PipelineDeps) {
+  const cert = res.reading.slab_cert_number?.replace(/\D/g, "");
+  if (!res.reading.is_graded_slab || !cert || cert.length < 7) return;
+  const token = deps.psaToken !== undefined ? deps.psaToken : config.psaToken;
+  if (!token) {
+    res.identity.warnings.push(`Slab détecté (certificat ${cert}) : ajoute PSA_API_TOKEN dans .env pour l'importer automatiquement`);
+    return;
+  }
+  if (res.identity.confidence < 0.8) {
+    res.identity.warnings.push(`Slab détecté (certificat ${cert}) : identité à confirmer avant de le rattacher (bouton « Référence par un slab »)`);
+    return;
+  }
+  try {
+    const { cert: data } = await attachCert(db, cert, res.identity.cardKey, { token, fetch: deps.fetch });
+    const sim = subjectMatches(data.Subject ?? "", res.identity, data.CardNumber);
+    if (sim < 0.6) {
+      unlinkCard(db, res.identity.cardKey);
+      res.identity.warnings.push(`Le certificat ${cert} (${data.Subject}) ne ressemble pas à la carte identifiée : non rattaché, à vérifier`);
+    }
+  } catch (e) {
+    res.identity.warnings.push(`Slab ${cert} : ${e instanceof Error ? e.message : e}`);
   }
 }
 

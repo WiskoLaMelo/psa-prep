@@ -75,14 +75,20 @@ describe("synchronisation One Piece", () => {
     const fetchOp = async (url: string) => {
       if (url.includes("/japanese/")) return json({});
       const fr = url.includes("/french/");
+      const asia = url.includes("/english-asia/");
       if (url.endsWith("packs.json")) return json({ "569105": { id: "569105", raw_title: "x", title_parts: { prefix: "BOOSTER PACK", title: fr ? "L&apos;Éveil" : "Awakening of the New Era", label: "OP-05" } } });
       return json({
         "OP05-119": { card_id: "OP05-119", name: fr ? "Monkey D. Luffy" : "Monkey.D.Luffy", pack_id: "569105", rarity: "SecretRare", img_url: "https://x/OP05-119.png" },
         "OP05-119_p1": { card_id: "OP05-119_p1", name: fr ? "Monkey D. Luffy" : "Monkey.D.Luffy", pack_id: "569105", rarity: "SecretRare" },
+        ...(asia ? { "OP05-119_p9": { card_id: "OP05-119_p9", name: "Monkey.D.Luffy", pack_id: "569105", rarity: "SecretRare" } } : {}),
       });
     };
     const summary = await syncOnePiece(db, { fetch: fetchOp });
-    expect(summary).toEqual({ en: { sets: 1, cards: 2 }, fr: { sets: 1, cards: 2 }, ja: { sets: 0, cards: 0 } });
+    // Japonais vide → édition English Asia (le faux serveur renvoie les mêmes cartes, plus une exclusivité).
+    expect(summary).toEqual({ en: { sets: 1, cards: 2 }, fr: { sets: 1, cards: 2 }, ja: { sets: 1, cards: 3 } });
+    const jp = resolveIdentity(db, reading({ game: "onepiece", language: "ja", printed_name: "モンキー・D・ルフィ", printed_number: "OP05-119", variant_hints: ["parallel"] }));
+    expect(jp.candidates.map((c) => c.variant)).toContain("p9");
+    expect(jp.catalogKey?.startsWith("onepiece:ja:")).toBe(true);
     const id = resolveIdentity(db, reading({ game: "onepiece", language: "fr", printed_name: "Monkey D. Luffy", printed_number: "OP05-119" }));
     expect(id.setName).toBe("BOOSTER PACK L'Éveil");
     expect(id.nameEn).toBe("Monkey.D.Luffy");

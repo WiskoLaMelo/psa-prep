@@ -214,6 +214,8 @@ export function resolveIdentity(db: Db, r: VisionReading): CardIdentity {
   const { cands, method } = game === "onepiece" ? resolveOnePiece(db, r, lang) : resolvePokemon(db, r, lang);
   const top = cands[0];
   if (!top) {
+    const offCatalog = identityFromReadingOnly(r, game, lang, warnings);
+    if (offCatalog) return offCatalog;
     return {
       game,
       lang,
@@ -266,6 +268,49 @@ export function resolveIdentity(db: Db, r: VisionReading): CardIdentity {
     method,
     candidates: cands,
     warnings,
+  };
+}
+
+/** Au-delà de ce plafond, une carte hors catalogue n'est jamais présentée comme sûre : l'utilisateur doit la confirmer. */
+export const OFF_CATALOG_MAX_CONFIDENCE = 0.6;
+
+/**
+ * Carte absente du catalogue (exclusivité japonaise, promo récente, trou de TCGdex…) :
+ * si la lecture est nette (nom + numéro + code lisibles), on construit l'identité à partir d'elle seule,
+ * avec une confiance plafonnée. Une fois confirmée à la revue, la carte rejoint le catalogue local.
+ */
+function identityFromReadingOnly(r: VisionReading, game: Game, lang: Lang, warnings: string[]): CardIdentity | null {
+  const c = r.confidence;
+  const name = r.printed_name ?? r.name_english;
+  let setId: string | null = null;
+  let number: string | null = null;
+  if (game === "onepiece") {
+    const id = parseOnePieceNumber(r.printed_number, r.set_code);
+    if (id) [setId, number] = [id.setId, id.number];
+  } else {
+    const parsed = parsePokemonNumber(r.printed_number);
+    setId = r.set_code ?? parsed?.embeddedCode ?? null;
+    number = parsed?.number ?? null;
+  }
+  if (!name || !setId || !number || Math.min(c.name, c.number, game === "onepiece" ? 1 : c.set_code) < 0.8) return null;
+  const variant = game === "pokemon" ? pokemonVariant(r) : r.variant_hints.some((h) => h === "parallel" || h === "alt_art") ? "parallel" : "base";
+  return {
+    game,
+    lang,
+    setId,
+    setName: r.set_name_guess ?? setId,
+    number,
+    name,
+    nameEn: r.name_english,
+    variant,
+    cardKey: makeCardKey({ game, lang, setId, number, variant }),
+    catalogKey: null,
+    releaseYear: null,
+    imageUrl: null,
+    confidence: Math.round(Math.min(OFF_CATALOG_MAX_CONFIDENCE, 0.5 * (c.name + c.number) * 0.65) * 1000) / 1000,
+    method: "reading",
+    candidates: [],
+    warnings: [...warnings, "Carte absente du catalogue (exclusivité ou sortie récente ?) : identité tirée de la lecture seule, à vérifier puis confirmer"],
   };
 }
 

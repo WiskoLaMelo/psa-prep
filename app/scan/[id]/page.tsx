@@ -159,6 +159,20 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
     setTimeout(() => setFlash(false), 120);
   }, [pump, rectoVerso]);
 
+  // Sur téléphone : l'écran ne se met pas en veille pendant le scan.
+  useEffect(() => {
+    let lock: { release(): Promise<void> } | null = null;
+    const nav = navigator as Navigator & { wakeLock?: { request(type: "screen"): Promise<{ release(): Promise<void> }> } };
+    const acquire = () => nav.wakeLock?.request("screen").then((l) => (lock = l)).catch(() => {});
+    void acquire();
+    const onVisible = () => document.visibilityState === "visible" && void acquire();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      void lock?.release();
+    };
+  }, []);
+
   // Analyse de l'image ~10 fois par seconde en basse résolution.
   useEffect(() => {
     const t = setInterval(() => {
@@ -216,16 +230,19 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
   return (
     <>
       <div className="row" style={{ marginBottom: 12 }}>
-        <h1 className="grow" style={{ margin: 0 }}>
+        <h1 className="grow scan-title" style={{ margin: 0 }}>
           Scan — {sessionName}
         </h1>
+        <Link className="btn desktop-only" href={`/phone?session=${id}`}>
+          Scanner avec le téléphone
+        </Link>
         <Link className="btn primary" href={`/review/${id}`}>
           Terminer → revue
         </Link>
       </div>
       {camError && <div className="panel err" style={{ marginBottom: 12 }}>{camError}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(260px, 1fr)", gap: 16 }} className="scan-grid">
-        <div style={{ position: "relative", background: "#000", borderRadius: 10, overflow: "hidden" }}>
+        <div style={{ position: "relative", background: "#000", borderRadius: 10, overflow: "hidden" }} onClick={capture} title="Touche l'image pour capturer">
           <video ref={videoRef} playsInline muted style={{ width: "100%", display: "block" }} />
           {/* Cadre-guide au format carte (63 × 88 mm). */}
           <div
@@ -255,11 +272,13 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
         <div className="stack">
           <div className="panel stack">
             <button className="primary" onClick={capture} style={{ justifyContent: "center", padding: 12 }}>
-              Capturer (Espace)
+              Capturer<span className="desktop-only"> (Espace)</span>
             </button>
-            <button onClick={() => void undo()}>Annuler la dernière (Z)</button>
+            <button onClick={() => void undo()}>
+              Annuler la dernière<span className="desktop-only"> (Z)</span>
+            </button>
             <label className="row small">
-              <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} /> Capture automatique (A)
+              <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} /> Capture automatique<span className="desktop-only"> (A)</span>
             </label>
             <label className="row small">
               <input
@@ -328,7 +347,11 @@ export default function ScanPage({ params }: { params: Promise<{ id: string }> }
           </p>
         </div>
       </div>
-      <style>{`@media (max-width: 760px) { .scan-grid { grid-template-columns: 1fr !important; } }`}</style>
+      <style>{`@media (max-width: 760px) {
+        .scan-grid { grid-template-columns: 1fr !important; }
+        .scan-title { font-size: 17px; }
+        header.top { display: none; }
+      }`}</style>
     </>
   );
 }

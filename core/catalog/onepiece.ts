@@ -13,7 +13,12 @@ import type { SyncProgress } from "./tcgdex";
  * Le japonais n'y est pas publié : les cartes JP partagent leurs identifiants avec l'anglais (voir resolve).
  */
 const BASE = "https://raw.githubusercontent.com/buhbbl/punk-records/main";
-const FOLDERS: Partial<Record<Lang, string>> = { en: "english", fr: "french", ja: "japanese" };
+/**
+ * Dossiers essayés par langue, dans l'ordre. Le japonais n'étant pas publié, on prend l'édition
+ * « English Asia » : elle suit les sorties japonaises (mêmes identifiants, mêmes parallèles et promos
+ * asiatiques absentes de l'anglais), avec des noms anglais. Le nom japonais vient alors de la lecture.
+ */
+const FOLDERS: Partial<Record<Lang, string[]>> = { en: ["english"], fr: ["french"], ja: ["japanese", "english-asia"] };
 
 interface PunkCard {
   card_id: string;
@@ -68,18 +73,27 @@ export async function syncOnePiece(db: Db, opts: { langs?: Lang[]; fetch?: Fetch
   const langs = (opts.langs ?? ["en", "fr", "ja"]).sort((a, b) => (a === "en" ? -1 : b === "en" ? 1 : 0));
   const summary: Record<string, { sets: number; cards: number }> = {};
   for (const lang of langs) {
-    const folder = FOLDERS[lang];
-    if (!folder) continue;
-    const [index, packs] = await Promise.all([
-      getJson<Record<string, PunkCard>>(`${BASE}/${folder}/index/cards_by_id.json`, { fetch: opts.fetch }),
-      getJson<Record<string, PunkPack>>(`${BASE}/${folder}/packs.json`, { fetch: opts.fetch }),
-    ]);
+    let index: Record<string, PunkCard> | null = null;
+    let packs: Record<string, PunkPack> | null = null;
+    let folder = "";
+    for (const f of FOLDERS[lang] ?? []) {
+      [index, packs] = await Promise.all([
+        getJson<Record<string, PunkCard>>(`${BASE}/${f}/index/cards_by_id.json`, { fetch: opts.fetch }),
+        getJson<Record<string, PunkPack>>(`${BASE}/${f}/packs.json`, { fetch: opts.fetch }),
+      ]);
+      folder = f;
+      if (Object.keys(index ?? {}).length) break;
+    }
     const cards = Object.values(index ?? {});
     if (!cards.length) {
       log(`[onepiece/${lang}] aucune donnée publiée, la langue utilisera l'anglais en secours`);
       summary[lang] = { sets: 0, cards: 0 };
       continue;
     }
+    // Édition asiatique en anglais : les noms sont anglais, la source le dit.
+    const namesAreEnglish = folder === "english" || folder === "english-asia";
+    const source = folder === "english-asia" ? "punk-records-asia" : "punk-records";
+    if (folder === "english-asia") log(`[onepiece/${lang}] pas de données japonaises : édition English Asia utilisée (mêmes cartes, noms anglais)`);
     const packTitle = (id: string) => {
       const p = packs?.[id];
       return p ? decodeEntities(p.title_parts?.title ? `${p.title_parts.prefix ?? ""} ${p.title_parts.title}`.trim() : p.raw_title) : id;
@@ -118,11 +132,11 @@ export async function syncOnePiece(db: Db, opts: { langs?: Lang[]; fetch?: Fetch
         setName: "",
         number: id.number,
         name: decodeEntities(c.name),
-        nameEn: lang === "en" ? decodeEntities(c.name) : null,
+        nameEn: namesAreEnglish ? decodeEntities(c.name) : null,
         variant: id.variant,
         rarity: c.rarity ?? null,
         imageUrl: c.img_full_url ?? c.img_url ?? null,
-        source: "punk-records",
+        source,
       });
     }
     for (const [setId, counts] of basePacks) {
@@ -144,7 +158,7 @@ export async function syncOnePiece(db: Db, opts: { langs?: Lang[]; fetch?: Fetch
       releaseDate: null,
       cardCount: rows.filter((r) => r.setId === setId).length,
       officialCount: null,
-      source: "punk-records",
+      source,
     }));
     upsertSets(db, sets);
     log(`[onepiece/${lang}] ${sets.length} sets, ${rows.length} cartes`);

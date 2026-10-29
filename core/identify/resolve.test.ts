@@ -56,10 +56,18 @@ describe("resolveIdentity — Pokémon", () => {
     expect(id.confidence).toBeLessThan(0.9);
   });
 
-  it("rend une identité vide et confiance 0 quand rien ne correspond", () => {
-    const id = resolveIdentity(db, reading({ printed_name: "Inconnu", printed_number: "999/999", set_code: "XXX" }));
+  it("rend une identité vide et confiance 0 quand rien ne correspond et que la lecture est floue", () => {
+    const id = resolveIdentity(db, reading({ printed_name: "Inconnu", printed_number: "999/999", set_code: "XXX", confidence: { game: 0.9, language: 0.9, name: 0.4, number: 0.5, set_code: 0.5 } }));
     expect(id.confidence).toBe(0);
     expect(id.catalogKey).toBeNull();
+  });
+
+  it("garde une carte hors catalogue (exclusivité JP) quand la lecture est nette, sans jamais la dire sûre", () => {
+    const id = resolveIdentity(db, reading({ language: "ja", printed_name: "ピカチュウ", name_english: "Pikachu", printed_number: "001/SV-P", set_code: null }));
+    expect(id.method).toBe("reading");
+    expect(id.cardKey).toBe("pokemon:ja:SV-P:001:base");
+    expect(id.confidence).toBeLessThanOrEqual(0.6);
+    expect(id.warnings.join(" ")).toMatch(/absente du catalogue/);
   });
 
   it("déduit la variante des tampons et indices", () => {
