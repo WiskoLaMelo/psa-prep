@@ -21,6 +21,13 @@ let client: Anthropic | null = null;
 
 /** Lecture d'une carte par Claude vision, sortie JSON validée par le schéma zod. */
 export const readCardWithClaude: VisionReader = async (jpeg) => {
+  // Pour tester l'interface sans clé API : VISION_MOCK_FILE pointe vers une lecture JSON fixe.
+  const mock = process.env.VISION_MOCK_FILE;
+  if (mock) {
+    const fs = await import("node:fs/promises");
+    const reading = VisionReadingSchema.parse(JSON.parse(await fs.readFile(mock, "utf8")));
+    return { reading, model: "mock", inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  }
   client ??= new Anthropic();
   const model = config.anthropicModel;
   const usesFallback = /^claude-(opus-5-5|opus-5|fable-5-1|sonnet-5-5)$/.test(model);

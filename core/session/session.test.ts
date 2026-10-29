@@ -129,6 +129,29 @@ describe("session de scan", () => {
   });
 });
 
+describe("précision avant rappel", () => {
+  it("n'affiche jamais en vert une carte dont l'identité est incertaine", async () => {
+    const { confirmFound } = await import("../psa/store");
+    const { resolveIdentity } = await import("../identify/resolve");
+    const s = createSession(db);
+    // Lecture ambiguë (nom lu différent du catalogue) mais carte déjà confirmée chez PSA.
+    const r = { printed_name: "Charizord", printed_number: "006/165", set_code: "MEW", confidence: { game: 0.9, language: 0.9, name: 0.4, number: 0.5, set_code: 0.5 } };
+    confirmFound(db, resolveIdentity(db, reading(r)), { title: "2023 POKEMON SV 151 #006 CHARIZARD ex" });
+    const previous = READINGS.red;
+    READINGS.red = r;
+    const { capture, item } = await addCapture(db, s.id, await photo("red", 7));
+    await processCapture(db, capture.id, { vision: fakeVision({ n: 0 }), imageFallback: false }).finally(() => (READINGS.red = previous));
+    let it0 = listItems(db, s.id)[0]!;
+    expect(it0.identity!.confidence).toBeLessThan(0.8);
+    expect(it0.psa?.status).toBe("orange");
+    expect(it0.psa?.title).toBe("2023 POKEMON SV 151 #006 CHARIZARD ex");
+    // Une fois l'identité confirmée par l'utilisateur, le vert est rendu.
+    patchItem(db, item.id, { candidateCardKey: it0.identity!.cardKey });
+    it0 = listItems(db, s.id)[0]!;
+    expect(it0.psa?.status).toBe("green");
+  });
+});
+
 describe("file d'identification", () => {
   it("retente après une erreur réseau puis réussit", async () => {
     const s = createSession(db);

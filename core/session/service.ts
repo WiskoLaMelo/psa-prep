@@ -167,12 +167,21 @@ export function moveItem(db: Db, itemId: number, newPosition: number) {
   });
 }
 
+/** En dessous de ce seuil, une identité non corrigée par l'utilisateur n'est jamais affichée en vert. */
+export const GREEN_MIN_CONFIDENCE = 0.8;
+
+/** Un vert exige aussi une carte sûrement identifiée : sinon le titre PSA pourrait être celui d'une autre carte. */
+function withIdentityCheck(psa: PsaResolution, identity: CardIdentity): PsaResolution {
+  if (psa.status !== "green" || identity.method === "manual" || identity.confidence >= GREEN_MIN_CONFIDENCE) return psa;
+  return { ...psa, status: "orange", reason: `Correspondance PSA connue, mais identité de la carte à vérifier (confiance ${Math.round(identity.confidence * 100)} %)` };
+}
+
 /** Enregistre l'identité d'un item et recalcule sa référence PSA. */
 export function setItemIdentity(db: Db, itemId: number, identity: CardIdentity | null) {
   const item = db.select().from(sessionItems).where(eq(sessionItems.id, itemId)).get();
   if (!item) return;
   const overrides = parse<Partial<ManualFields>>(item.manualOverridesJson);
-  const psa = identity ? resolvePsa(db, identity, overrides) : null;
+  const psa = identity ? withIdentityCheck(resolvePsa(db, identity, overrides), identity) : null;
   db.update(sessionItems)
     .set({
       cardKey: identity?.cardKey ?? null,
