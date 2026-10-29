@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.local
+data/
+test-cards/
+certs.txt
+.next/
+dist/
+*.log
+.DS_Store
