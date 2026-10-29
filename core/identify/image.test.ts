@@ -66,7 +66,7 @@ describe("secours par image", () => {
       reason: "test",
     });
     const images: Record<string, Buffer> = { "https://img/h": await art("h"), "https://img/v": await art("v") };
-    const fakeFetch = async (url: string) => new Response(images[url]);
+    const fakeFetch = async (url: string) => new Response(new Uint8Array(images[url]!));
     const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "psa-img-"));
     const ranked = await rerankByImage(db, await art("v", 2), [cand("base1", "https://img/h"), cand("base4", "https://img/v")], { fetch: fakeFetch, cacheDir });
     expect(ranked[0]!.setId).toBe("base4");

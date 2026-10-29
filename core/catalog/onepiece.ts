@@ -1,4 +1,6 @@
+import { and, eq } from "drizzle-orm";
 import type { Db } from "../db";
+import { catalogSets } from "../db/schema";
 import { makeCardKey, setKey } from "../cards/key";
 import type { Lang } from "../types";
 import { getJson, type FetchLike } from "../util/http";
@@ -35,8 +37,31 @@ export function parseOnePieceId(id: string): { setId: string; number: string; va
   return { setId: m[1]!, number: m[2]!, variant: m[3] ? m[3].toLowerCase() : "base" };
 }
 
-const decodeEntities = (s: string) =>
-  s.replace(/&amp;/g, "&").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+/** Codes de set portés par l'étiquette d'un pack : "OP-05" → ["OP05"], "OP14-EB04" → ["OP14", "EB04"]. */
+export function packCodes(label: string | null | undefined): string[] {
+  if (!label) return [];
+  return label
+    .toUpperCase()
+    .replace(/([A-Z]+)-(\d)/g, "$1$2")
+    .split(/[-\s/]+/)
+    .filter((c) => /^[A-Z]{1,4}\d{1,3}$/.test(c));
+}
+
+const ENTITIES: Record<string, string> = { amp: "&", apos: "'", quot: '"', lt: "<", gt: ">", nbsp: "\u00a0" };
+
+/** Les titres sources sont parfois doublement encodés ("&amp;apos;") : on décode jusqu'à stabilité. */
+export function decodeEntities(s: string): string {
+  let prev = "";
+  let cur = s;
+  while (cur !== prev) {
+    prev = cur;
+    cur = cur
+      .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+      .replace(/&(\w+);/g, (m, name: string) => ENTITIES[name] ?? m);
+  }
+  return cur.replace(/\u00a0/g, " ");
+}
 
 export async function syncOnePiece(db: Db, opts: { langs?: Lang[]; fetch?: FetchLike; onProgress?: SyncProgress } = {}) {
   const log = opts.onProgress ?? (() => {});
@@ -60,12 +85,31 @@ export async function syncOnePiece(db: Db, opts: { langs?: Lang[]; fetch?: Fetch
       return p ? decodeEntities(p.title_parts?.title ? `${p.title_parts.prefix ?? ""} ${p.title_parts.title}`.trim() : p.raw_title) : id;
     };
     const rows: CatalogCardRow[] = [];
-    // Nom de set = pack d'origine de la version de base de la carte.
+    // Nom de set : le pack dont l'étiquette porte le code du set (« OP-05 », « OP14-EB04 »),
+    // sinon le nom anglais déjà connu, sinon le pack d'origine le plus fréquent des cartes de base.
     const setNames = new Map<string, string>();
+    // Les étiquettes à un seul code (« EB-04 ») passent avant les combinées (« OP14-EB04 »).
+    const labelled = Object.values(packs ?? {})
+      .map((p) => ({ p, codes: packCodes(p.title_parts?.label) }))
+      .sort((a, b) => a.codes.length - b.codes.length);
+    for (const { p, codes } of labelled) for (const code of codes) if (!setNames.has(code)) setNames.set(code, packTitle(p.id));
+    const englishNames = new Map(
+      db
+        .select({ setId: catalogSets.setId, name: catalogSets.name })
+        .from(catalogSets)
+        .where(and(eq(catalogSets.game, "onepiece"), eq(catalogSets.lang, "en")))
+        .all()
+        .map((r) => [r.setId, r.name]),
+    );
+    const basePacks = new Map<string, Map<string, number>>();
     for (const c of cards) {
       const id = parseOnePieceId(c.card_id);
       if (!id) continue;
-      if (id.variant === "base" && !setNames.has(id.setId)) setNames.set(id.setId, packTitle(c.pack_id));
+      if (id.variant === "base") {
+        const m = basePacks.get(id.setId) ?? new Map<string, number>();
+        m.set(c.pack_id, (m.get(c.pack_id) ?? 0) + 1);
+        basePacks.set(id.setId, m);
+      }
       rows.push({
         cardKey: makeCardKey({ game: "onepiece", lang, ...id }),
         game: "onepiece",
@@ -81,14 +125,20 @@ export async function syncOnePiece(db: Db, opts: { langs?: Lang[]; fetch?: Fetch
         source: "punk-records",
       });
     }
-    for (const r of rows) r.setName = setNames.get(r.setId) ?? r.setId;
+    for (const [setId, counts] of basePacks) {
+      if (setNames.has(setId)) continue;
+      const english = lang !== "en" ? englishNames.get(setId) : undefined;
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      setNames.set(setId, english ?? (top ? packTitle(top) : setId));
+    }
+    for (const r of rows) r.setName = setNames.get(r.setId) ?? englishNames.get(r.setId) ?? r.setId;
     upsertCards(db, rows);
     const sets: CatalogSetRow[] = [...new Set(rows.map((r) => r.setId))].map((setId) => ({
       key: setKey("onepiece", lang, setId),
       game: "onepiece",
       lang,
       setId,
-      name: setNames.get(setId) ?? setId,
+      name: setNames.get(setId) ?? englishNames.get(setId) ?? setId,
       series: null,
       codesJson: JSON.stringify([setId]),
       releaseDate: null,

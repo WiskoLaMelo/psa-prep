@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { memDb } from "../test/helpers";
 import { syncTcgdex } from "./tcgdex";
-import { syncOnePiece, parseOnePieceId } from "./onepiece";
+import { syncOnePiece, parseOnePieceId, decodeEntities, packCodes } from "./onepiece";
 import { resolveIdentity } from "../identify/resolve";
 import { reading } from "../test/helpers";
 import { catalogStats } from "./store";
@@ -51,6 +51,18 @@ describe("synchronisation TCGdex", () => {
 });
 
 describe("synchronisation One Piece", () => {
+  it("décode les entités HTML, même doublement encodées", () => {
+    expect(decodeEntities("Carte d&amp;apos;autres produits")).toBe("Carte d'autres produits");
+    expect(decodeEntities("Barbe Blanche&nbsp;!!")).toBe("Barbe Blanche !!");
+  });
+
+  it("lit les codes de set des étiquettes de packs", () => {
+    expect(packCodes("OP-05")).toEqual(["OP05"]);
+    expect(packCodes("OP14-EB04")).toEqual(["OP14", "EB04"]);
+    expect(packCodes("PRB-01")).toEqual(["PRB01"]);
+    expect(packCodes(null)).toEqual([]);
+  });
+
   it("analyse les identifiants", () => {
     expect(parseOnePieceId("OP05-119_p1")).toEqual({ setId: "OP05", number: "119", variant: "p1" });
     expect(parseOnePieceId("EB01-001")).toEqual({ setId: "EB01", number: "001", variant: "base" });
