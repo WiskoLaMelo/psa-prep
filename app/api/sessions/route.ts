@@ -1,10 +1,13 @@
 import { createSession, listSessions } from "@/core/session/service";
-import { getDb, handle, json } from "@/lib/server";
+import { getDb, getQueue, handle, json } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return handle(() => json(listSessions(getDb())));
+  return handle(() => {
+    getQueue();
+    return json(listSessions(getDb()));
+  });
 }
 
 export async function POST(req: Request) {

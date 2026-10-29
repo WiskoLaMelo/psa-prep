@@ -1,12 +1,15 @@
 import "server-only";
 import { getDb } from "@/core/db";
 import { IdentifyQueue } from "@/core/session/queue";
+import { refreshPsa } from "@/core/session/service";
 
 const g = globalThis as unknown as { __psaQueue?: IdentifyQueue };
 
 /** File d'identification partagée par toutes les routes ; reprend les captures en attente au démarrage. */
 export function getQueue(): IdentifyQueue {
   if (!g.__psaQueue) {
+    // Les statuts PSA stockés sont un cache : on les recalcule au démarrage pour appliquer les règles à jour.
+    refreshPsa(getDb());
     g.__psaQueue = new IdentifyQueue(getDb());
     g.__psaQueue.resume();
     g.__psaQueue.startPolling();
